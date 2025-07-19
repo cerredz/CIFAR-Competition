@@ -6,6 +6,4 @@ def unpickle(file):
     return dict
 
 def create_label_array(n: int):
-    arr = [0] * 10
-    arr[n] = 1
-    return arr
+    return n
