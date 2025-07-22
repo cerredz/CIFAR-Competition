@@ -6,8 +6,8 @@ def augment(feature_input: list):
     print("Adding aut")
     res = []
     res.append(feature_input)
-    res.append(vertical_flip(feature_input))
-    res.append(horizontal_flip(feature_input))
+    #res.append(vertical_flip(feature_input))
+    #res.append(horizontal_flip(feature_input))
     res.extend(noise(feature_input))
 
     return res
@@ -20,7 +20,7 @@ def horizontal_flip(feature_input: list):
 
 def noise(feature_input: list):
     n = len(feature_input)
-    num_iterations = 4 # augment data by factor of 128
+    num_iterations = 8 # augment data by factor of 128
     bucket_size = 256 # add noise to 1 out of every 16 elements in features
     res = []
 

@@ -152,23 +152,41 @@ def train(batch_size: int, epochs: int, lr: float, weight_decay: float):
     labels = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
     
     # Collect all data and labels properly
-    all_data = []
-    all_labels = []
-    
+    # First, split the original data
+    original_data = []
+    original_labels = []
+
     for name in dataset_names:
-        data = augment(datasets[name][b"data"])  # This is already a numpy array of shape (N, 3072)
-        labels_batch = datasets[name][b"labels"]
-        for row in data:
-            all_data.append(row)
-            all_labels.extend(labels_batch)
+        batch_data = datasets[name][b"data"]
+        batch_labels = datasets[name][b"labels"]
+        original_data.extend(batch_data)
+        original_labels.extend(batch_labels)
+
+    X_orig = torch.tensor(np.array(original_data), dtype=torch.float32)
+    y_orig = torch.tensor(original_labels, dtype=torch.long)
+
+    # Split ORIGINAL data first
+    x_train_orig, x_val, y_train_orig, y_val = train_test_split(
+        X_orig, y_orig, test_size=0.3, random_state=42, shuffle=True
+    )
+
+    # THEN apply augmentation only to training data
+    augmented_train_data = []
+    augmented_train_labels = []
+
+    for i, image in enumerate(x_train_orig):
+        augmented_images = augment([image.numpy()])
+        for aug_image in augmented_images:
+            augmented_train_data.append(aug_image)
+            augmented_train_labels.append(y_train_orig[i])
+
+    x_train = torch.tensor(np.array(augmented_train_data), dtype=torch.float32)
+    y_train = torch.tensor(augmented_train_labels, dtype=torch.long)
     
-    # Concatenate all data and convert to tensor
-    X = torch.tensor(np.concatenate(all_data, axis=0), dtype=torch.float32)
-    y = torch.tensor(all_labels, dtype=torch.long)
-    
-    x_train, x_temp, y_train, y_temp = train_test_split(X, y, test_size=0.3, train_size=0.7, random_state=42, shuffle=True)
-    x_val, x_test, y_val, y_test = train_test_split(x_temp, y_temp, test_size=0.5, train_size=0.5, random_state=42, shuffle=True)
-    
+    test_dataset = unpickle(os.path.join(path, "test_batch"))
+    x_test = torch.tensor(test_dataset[b"data"], dtype=torch.float32)
+    y_test = torch.tensor(test_dataset[b"labels"], dtype=torch.long)
+
     train_dataset = TensorDataset(x_train, y_train)
     val_dataset = TensorDataset(x_val, y_val)
     test_dataset = TensorDataset(x_test, y_test)
@@ -198,6 +216,8 @@ def train(batch_size: int, epochs: int, lr: float, weight_decay: float):
     sample_indices = torch.randperm(len(x_train))[:sample_size]
     embedding_data = x_train[sample_indices]
     embedding_labels = y_train[sample_indices]
+    if embedding_data.dim() > 2:
+        embedding_data = embedding_data.view(embedding_data.size(0), -1)
     logger.experiment.add_embedding(
         embedding_data,
         metadata=embedding_labels.tolist(),
