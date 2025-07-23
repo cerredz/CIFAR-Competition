@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import lightning as L
 from utils import *
 from sklearn.model_selection import train_test_split
+from augmentation import *
 
 """ 
 Implementation of a CNN for the Cifar-10 Dataset
@@ -15,42 +16,61 @@ class CifarCnnDense(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.l1 = nn.Sequential(nn.Conv2d(3, 32, (3,3), stride=2), nn.ReLU())
-        self.l2 = nn.Sequential(nn.Conv2d(32, 96, (5,5), stride=2), nn.ReLU())
-        self.l3 = nn.Sequential(nn.Conv2d(96, 32, (3,3), stride=1), nn.ReLU())
-        self.l4 = nn.Sequential(nn.Conv2d(32, 16, (3,3), stride=1), nn.ReLU())  # Adjusted kernel size
+        self.l1 = nn.Sequential(nn.Conv2d(3, 64, (3,3)), nn.BatchNorm2d(64), nn.GELU())
+        self.l2 = nn.Sequential(nn.Conv2d(64, 128, (3,3)), nn.BatchNorm2d(128), nn.GELU(), nn.MaxPool2d(2)) 
+        self.l3 = nn.Sequential(nn.Conv2d(128, 256, (3,3)), nn.BatchNorm2d(256), nn.GELU())
+        self.l4 = nn.Sequential(nn.Conv2d(256, 256, (3,3)), nn.BatchNorm2d(256), nn.GELU(), nn.MaxPool2d(2))
+        self.l5 = nn.Sequential(nn.Conv2d(256, 512, (3,3)), nn.BatchNorm2d(512), nn.GELU())
+        self.l6 = nn.Sequential(nn.Conv2d(512, 256, (3,3)), nn.BatchNorm2d(256), nn.GELU())
         self.flatten = nn.Flatten()
-        self.dense1 = nn.Linear(64, 48)  # Input: 256, Output: 128
-        self.relu = nn.ReLU()
-        self.dense2 = nn.Linear(48, 32) 
-        self.dense3 = nn.Linear(32, 10)  
+        self.dense1 = nn.Sequential(nn.Linear(256, 128), nn.Dropout(p=.5), nn.GELU())
+        self.dense2 = nn.Sequential(nn.Linear(128, 64), nn.Dropout(p=.3), nn.GELU())
+        self.dense3 = nn.Sequential(nn.Linear(64, 10), nn.Dropout(p=.2), nn.GELU())
 
     def forward(self, x):
         x = self.l1(x)
         x = self.l2(x)
         x = self.l3(x)
         x = self.l4(x)
+        x = self.l5(x)
+        x = self.l6(x)
         x = self.flatten(x)
         x = self.dense1(x)
-        x = self.relu(x)
         x = self.dense2(x)
-        x = self.relu(x)
         x = self.dense3(x)
         return x
     
 class CifarCnn(nn.Module):
     def __init__(self):
         super().__init__()
-        pass
+        
+        self.relu = nn.ReLU()
+        self.l1 = nn.Conv2d(3, 16, (4,4), stride=1)
+        self.l2 = nn.Conv2d(16, 32, (5,5), stride=2)
+        self.l3 = nn.Conv2d(32, 96, (5,5), stride=2, padding=2)
+        self.l4 = nn.Conv2d(96, 10, (5,5), stride=1)
+        self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.flatten = nn.Flatten()
 
     def forward(self, x):
-        pass
+        x = self.l1(x)
+        x = self.relu(x)
+        x = self.l2(x)
+        x = self.relu(x)
+        x = self.l3(x)
+        x = self.relu(x)
+        x = self.l4(x)
+        x = self.relu(x)
+        x = self.global_avg_pool(x)
+        x = self.flatten(x)
+        return x
 
 class CifarLitCnn(L.LightningModule):
-    def __init__(self, cnn, lr):
+    def __init__(self, cnn, lr, weight_decay):
         super().__init__()
         self.cnn = cnn
         self.lr = lr
+        self.weight_decay = weight_decay
 
     def training_step(self, batch, batch_idx):
         # training_step defines the train loop.
@@ -80,10 +100,10 @@ class CifarLitCnn(L.LightningModule):
         self.log("test_accuracy", accuracy)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         return optimizer
 
-def train(lr, batch_size, epochs):
+def train(lr, batch_size, epochs, weight_decay):
     # Get training data
     path = os.path.join(os.path.dirname(__file__), "data")
     dataset_names = ["data_batch_1", "data_batch_2", "data_batch_3", "data_batch_4", "data_batch_5"]
@@ -123,7 +143,21 @@ def train(lr, batch_size, epochs):
 
     # split into train / val / test and then load into data loaders
     x_train, x_val, y_train, y_val = train_test_split(x, y, test_size=.2, train_size=.8, shuffle=True, random_state=42)
+
+    augmented_data = []
+    augmented_labels = []
+    print("Augmenting data...")
+    for data, label in zip(x_train, y_train):
+        augmented_data.extend(noise_conv_2d(data))
+        augmented_data.append(horizontal_flip(data))
+        augmented_data.append(vertical_flip(data))
+        augmented_labels.extend([label] * 7) # noise x 4, hor flip, vert flip
     
+    # Concatenate
+    x_train = np.concatenate([x_train, augmented_data], axis=0)
+    y_train = np.concatenate([y_train, augmented_labels], axis=0)
+    
+    # augment the training data
     train_loader = TensorDataset(torch.tensor(x_train, dtype=torch.float32), torch.tensor(y_train, dtype=torch.long))
     val_loader = TensorDataset(torch.tensor(x_val, dtype=torch.float32), torch.tensor(y_val, dtype=torch.long))
     test_loader = TensorDataset(torch.tensor(x_test, dtype=torch.float32), torch.tensor(y_test, dtype=torch.long))
@@ -133,13 +167,15 @@ def train(lr, batch_size, epochs):
     test_dataset = DataLoader(test_loader, batch_size=batch_size, shuffle=False, num_workers=8,persistent_workers=True, pin_memory=True)
 
     # train the model
-    model = CifarLitCnn(CifarCnnDense(), lr)
+    model = CifarLitCnn(CifarCnnDense(), lr, weight_decay)
+    #model = CifarLitCnn(CifarCnn(), lr, weight_decay)
     trainer = L.Trainer(max_epochs=epochs, log_every_n_steps=10)
     trainer.fit(model=model, train_dataloaders=train_dataset, val_dataloaders=val_dataset)
     trainer.test(model=model, dataloaders=test_dataset)
 
 if __name__ == "__main__":
     lr = 1e-4
-    batch_size = 256
-    epochs = 50
-    train(lr, batch_size, epochs)
+    batch_size = 2048
+    epochs = 4
+    weight_decay=1e-3
+    train(lr, batch_size, epochs,weight_decay)
