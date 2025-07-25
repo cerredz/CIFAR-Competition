@@ -19,7 +19,7 @@ class CifarCnnDense(nn.Module):
         self.l1 = nn.Sequential(nn.Conv2d(3, 64, (3,3)), nn.BatchNorm2d(64), nn.GELU())
         self.l2 = nn.Sequential(nn.Conv2d(64, 128, (3,3)), nn.BatchNorm2d(128), nn.GELU(), nn.MaxPool2d(2)) 
         self.l3 = nn.Sequential(nn.Conv2d(128, 256, (3,3)), nn.BatchNorm2d(256), nn.GELU())
-        self.l4 = nn.Sequential(nn.Conv2d(256, 256, (3,3)), nn.BatchNorm2d(256), nn.GELU(), nn.MaxPool2d(2))
+        self.l4 = nn.Sequential(nn.Conv2d(256, 256, (3,3)),  nn.BatchNorm2d(256), nn.GELU(), nn.MaxPool2d(2))
         self.l5 = nn.Sequential(nn.Conv2d(256, 512, (3,3)), nn.BatchNorm2d(512), nn.GELU())
         self.l6 = nn.Sequential(nn.Conv2d(512, 256, (3,3)), nn.BatchNorm2d(256), nn.GELU())
         self.flatten = nn.Flatten()
@@ -45,24 +45,26 @@ class CifarCnn(nn.Module):
         super().__init__()
         
         self.relu = nn.ReLU()
-        self.l1 = nn.Conv2d(3, 16, (4,4), stride=1)
-        self.l2 = nn.Conv2d(16, 32, (5,5), stride=2)
-        self.l3 = nn.Conv2d(32, 96, (5,5), stride=2, padding=2)
-        self.l4 = nn.Conv2d(96, 10, (5,5), stride=1)
-        self.global_avg_pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.flatten = nn.Flatten()
+        self.l1 = nn.Sequential(nn.Conv2d(3, 16, (3,3)), nn.BatchNorm2d(16), nn.GELU())
+        self.l2 = nn.Sequential(nn.Conv2d(16, 48, (2,2)), nn.BatchNorm2d(48), nn.GELU())
+        self.l3 = nn.Sequential(nn.Conv2d(48, 96, (2,2)), nn.BatchNorm2d(96), nn.GELU())
+        self.l4 = nn.Sequential(nn.Conv2d(96, 200, (2,2)), nn.BatchNorm2d(200), nn.GELU(), nn.MaxPool2d(2))
+        self.l5 = nn.Sequential(nn.Conv2d(200, 200, (2,2)), nn.BatchNorm2d(200), nn.GELU())
+        self.l6 = nn.Sequential(nn.Conv2d(200, 400, (2,2)), nn.BatchNorm2d(400), nn.GELU())
+        self.l7 = nn.Sequential(nn.Conv2d(400, 800, (2,2)), nn.BatchNorm2d(800), nn.GELU())
+        self.l8 = nn.Sequential(nn.Conv2d(800, 1600, (2,2)), nn.BatchNorm2d(1600), nn.GELU())
+        self.l9 = nn.Sequential(nn.Conv2d(1600, 10, (1,1)), nn.BatchNorm2d(10), nn.AdaptiveAvgPool2d((1,1)))
 
     def forward(self, x):
         x = self.l1(x)
-        x = self.relu(x)
         x = self.l2(x)
-        x = self.relu(x)
         x = self.l3(x)
-        x = self.relu(x)
         x = self.l4(x)
-        x = self.relu(x)
-        x = self.global_avg_pool(x)
-        x = self.flatten(x)
+        x = self.l5(x)
+        x = self.l6(x)
+        x = self.l7(x)
+        x = self.l8(x)
+        x = self.l9(x)
         return x
 
 class CifarLitCnn(L.LightningModule):
@@ -151,6 +153,7 @@ def train(lr, batch_size, epochs, weight_decay):
         augmented_data.extend(noise_conv_2d(data))
         augmented_data.append(horizontal_flip(data))
         augmented_data.append(vertical_flip(data))
+        augmented_data.append(scale(data))
         augmented_labels.extend([label] * 7) # noise x 4, hor flip, vert flip
     
     # Concatenate
@@ -174,8 +177,8 @@ def train(lr, batch_size, epochs, weight_decay):
     trainer.test(model=model, dataloaders=test_dataset)
 
 if __name__ == "__main__":
-    lr = 1e-4
+    lr = 1e-3
     batch_size = 2048
     epochs = 4
-    weight_decay=1e-3
+    weight_decay=1e-4
     train(lr, batch_size, epochs,weight_decay)

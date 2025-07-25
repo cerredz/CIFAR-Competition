@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import time
+from scipy.ndimage import zoom
 
 def augment(feature_input: list):
     res = []
@@ -44,6 +45,23 @@ def vertical_flip(feature_input: np.ndarray):
         raise ValueError(f"Expected shape (3, 32, 32), got {feature_input.shape}")
     
     return feature_input[:, ::-1, :]
+
+def scale(feature_input: np.ndarray, scale: float = 1.1):
+    if feature_input.shape != (3, 32, 32):
+        raise ValueError(f"Expected shape (3, 32, 32), got {feature_input.shape}")
+    
+    scaled = zoom(feature_input, (1.0, 1.1, 1.1), order=1)  # order=1 for bilinear
+    
+    h, w = scaled.shape[1], scaled.shape[2]
+    
+    start_h = (h - 32) // 2
+    start_w = (w - 32) // 2
+    end_h = start_h + 32
+    end_w = start_w + 32
+    
+    cropped = scaled[:, start_h:end_h, start_w:end_w]
+    return cropped
+
 
 def noise_conv_2d(feature_input: np.ndarray):
     
